@@ -1,7 +1,7 @@
 import "server-only";
 
 import { formatMonth } from "./format";
-import type { ExperienceEntry, Identity } from "./schema";
+import type { ExperienceEntry, Identity, Milestone } from "./schema";
 
 const ESC = "\x1b[";
 const RESET = `${ESC}0m`;
@@ -29,16 +29,35 @@ function header(identity: Identity): string {
   ].join("\n");
 }
 
+function companySpan(milestones: Milestone[]): { start: string; end: string } {
+  const starts = milestones.map((m) => m.start).sort();
+  const hasPresent = milestones.some((m) => m.end === "present");
+  const ends = milestones
+    .map((m) => m.end)
+    .filter((e) => e !== "present")
+    .sort();
+  return {
+    start: starts[0] ?? "",
+    end: hasPresent ? "present" : (ends[ends.length - 1] ?? ""),
+  };
+}
+
+function milestoneBlock(m: Milestone): string {
+  const dates = `${formatMonth(m.start)} → ${formatMonth(m.end)}`;
+  const highlights = m.highlights.map((h) => `    ${ACCENT}❯${RESET} ${h}`).join("\n");
+  return [`  ${BOLD}${m.role}${RESET}  ${DIM}${dates}${RESET}`, highlights].join("\n");
+}
+
 function experienceBlock(entries: ExperienceEntry[]): string {
   const rows = entries.map((entry) => {
-    const dates = `${formatMonth(entry.start)} → ${formatMonth(entry.end)}`;
-    const highlights = entry.highlights.map((h) => `  ${ACCENT}❯${RESET} ${h}`).join("\n");
+    const span = companySpan(entry.milestones);
+    const spanDates = `${formatMonth(span.start)} → ${formatMonth(span.end)}`;
+    const milestones = entry.milestones.map(milestoneBlock).join("\n\n");
     const stack = entry.stack.length ? `\n  ${DIM}stack:${RESET} ${entry.stack.join(", ")}` : "";
     return [
-      `${CYAN}${entry.company}${RESET} · ${entry.role}`,
-      `${DIM}${dates} · ${entry.location}${RESET}`,
+      `${CYAN}${entry.company}${RESET}  ${DIM}${spanDates} · ${entry.location}${RESET}`,
       "",
-      highlights + stack,
+      milestones + stack,
     ].join("\n");
   });
   return rows.join("\n\n");

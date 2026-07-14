@@ -29,10 +29,19 @@ export const metadata: Metadata = {
     siteName: "Sanish Chirayath",
     title: "Sanish Chirayath",
     description: "Software Development Engineer based in Bangalore. Writing, projects, and notes.",
+    images: [
+      {
+        url: "/og?title=Sanish+Chirayath&subtitle=portfolio.hstart.in",
+        width: 1200,
+        height: 630,
+        alt: "Sanish Chirayath — portfolio",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     creator: "@sanishch",
+    images: ["/og?title=Sanish+Chirayath&subtitle=portfolio.hstart.in"],
   },
   robots: {
     index: true,

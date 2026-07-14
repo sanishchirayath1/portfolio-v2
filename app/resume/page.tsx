@@ -1,10 +1,24 @@
 import { formatMonth, loadExperience, loadIdentity } from "@/lib/content";
+import type { Milestone } from "@/lib/schema";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "resume",
   description: "Printable single-page résumé.",
 };
+
+function companySpan(milestones: Milestone[]): { start: string; end: string } {
+  const starts = milestones.map((m) => m.start).sort();
+  const hasPresent = milestones.some((m) => m.end === "present");
+  const ends = milestones
+    .map((m) => m.end)
+    .filter((e) => e !== "present")
+    .sort();
+  return {
+    start: starts[0] ?? "",
+    end: hasPresent ? "present" : (ends[ends.length - 1] ?? ""),
+  };
+}
 
 export default async function ResumePage() {
   const [identity, entries] = await Promise.all([loadIdentity(), loadExperience()]);
@@ -36,35 +50,47 @@ export default async function ResumePage() {
         <h2 className="font-mono text-xs uppercase tracking-wider text-[color:var(--color-muted)]">
           Experience
         </h2>
-        <ol className="mt-3 space-y-5">
-          {entries.map((entry) => (
-            <li key={`${entry.company}-${entry.start}`}>
-              <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                <p className="font-mono text-sm">
-                  <span className="font-medium">{entry.company}</span>
-                  <span className="text-[color:var(--color-muted)]"> · {entry.role}</span>
-                </p>
-                <p className="font-mono text-xs text-[color:var(--color-muted)]">
-                  {formatMonth(entry.start)} → {formatMonth(entry.end)} · {entry.location}
-                </p>
-              </div>
-              <ul className="mt-2 space-y-1">
-                {entry.highlights.map((h) => (
-                  <li key={h} className="flex gap-2 text-[13px]">
-                    <span aria-hidden className="text-[color:var(--color-accent)]">
-                      ❯
-                    </span>
-                    <span>{h}</span>
-                  </li>
-                ))}
-              </ul>
-              {entry.stack.length > 0 && (
-                <p className="mt-2 font-mono text-xs text-[color:var(--color-muted)]">
-                  {entry.stack.join(" · ")}
-                </p>
-              )}
-            </li>
-          ))}
+        <ol className="mt-3 space-y-6">
+          {entries.map((entry) => {
+            const span = companySpan(entry.milestones);
+            return (
+              <li key={`${entry.company}-${span.start}`}>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                  <p className="font-mono text-sm font-medium">{entry.company}</p>
+                  <p className="font-mono text-xs text-[color:var(--color-muted)]">
+                    {formatMonth(span.start)} → {formatMonth(span.end)} · {entry.location}
+                  </p>
+                </div>
+                <ol className="mt-2 space-y-3 border-l border-[color:var(--color-border)] pl-3">
+                  {entry.milestones.map((m) => (
+                    <li key={`${m.role}-${m.start}`}>
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                        <p className="font-mono text-[13px]">{m.role}</p>
+                        <p className="font-mono text-[11px] text-[color:var(--color-muted)]">
+                          {formatMonth(m.start)} → {formatMonth(m.end)}
+                        </p>
+                      </div>
+                      <ul className="mt-1 space-y-1">
+                        {m.highlights.map((h) => (
+                          <li key={h} className="flex gap-2 text-[13px]">
+                            <span aria-hidden className="text-[color:var(--color-accent)]">
+                              ❯
+                            </span>
+                            <span>{h}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  ))}
+                </ol>
+                {entry.stack.length > 0 && (
+                  <p className="mt-2 font-mono text-xs text-[color:var(--color-muted)]">
+                    {entry.stack.join(" · ")}
+                  </p>
+                )}
+              </li>
+            );
+          })}
         </ol>
       </section>
 

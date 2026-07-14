@@ -21,13 +21,19 @@ export const IdentitySchema = z.object({
 
 export type Identity = z.infer<typeof IdentitySchema>;
 
-export const ExperienceEntrySchema = z.object({
-  company: z.string(),
+export const MilestoneSchema = z.object({
   role: z.string(),
   start: z.string(),
   end: z.string(),
-  location: z.string(),
   highlights: z.array(z.string()),
+});
+
+export type Milestone = z.infer<typeof MilestoneSchema>;
+
+export const ExperienceEntrySchema = z.object({
+  company: z.string(),
+  location: z.string(),
+  milestones: z.array(MilestoneSchema).min(1),
   stack: z.array(z.string()).default([]),
   links: z.array(z.object({ label: z.string(), href: z.url() })).default([]),
 });

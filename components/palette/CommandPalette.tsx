@@ -93,6 +93,16 @@ export function CommandPalette({ email, github, linkedin, twitter, posts, projec
     showFlash(`theme: ${next}`);
   }, [showFlash]);
 
+  const replayBoot = useCallback(() => {
+    setOpen(false);
+    try {
+      localStorage.removeItem("boot:seen");
+    } catch {
+      // ignore
+    }
+    window.dispatchEvent(new CustomEvent("boot:replay"));
+  }, []);
+
   return (
     <>
       <Command.Dialog
@@ -167,6 +177,15 @@ export function CommandPalette({ email, github, linkedin, twitter, posts, projec
               >
                 <span className="cmdk-item-kind">$</span>
                 <span>cycle theme</span>
+              </Command.Item>
+              <Command.Item
+                value="replay boot sequence intro animation"
+                onSelect={replayBoot}
+                className="cmdk-item"
+              >
+                <span className="cmdk-item-kind">$</span>
+                <span>replay boot</span>
+                <span className="cmdk-item-hint">shows the intro again</span>
               </Command.Item>
               <Command.Item
                 value="open github"

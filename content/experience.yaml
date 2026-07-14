@@ -1,45 +1,61 @@
 # Work experience — latest first.
+# A single company can have multiple `milestones` (role changes, promotions).
 # Rendered by /work timeline and /resume print view.
 # Dates are ISO YYYY-MM. Use "present" for ongoing roles.
 
 - company: Bruno
-  role: Software Developer
-  start: 2025-01
-  end: present
   location: Bangalore, India
-  highlights:
-    - "Led gRPC support from prototype to GA: client with all four streaming modes, reflection-based service discovery, full UI layer, and CLI interoperability."
-    - Built an AST-based Postman-to-Bruno script translator using jscodeshift, converting 50+ API patterns with 100+ test cases to streamline migration for incoming teams.
-    - Designed core platform systems including a lifecycle-based hooks runtime, cookie management with a full UI, and a script error handling system.
   stack: [TypeScript, Electron, gRPC, jscodeshift]
   links:
     - label: Bruno
       href: https://www.usebruno.com
+  milestones:
+    - role: Tech Lead (SDE 3)
+      start: 2026-01
+      end: present
+      highlights:
+        - "Own the client platform surface: CLI, Collection Runner, Scripting (runtime + translation), Tests/Assertions, gRPC, OAuth2, Network Stack (proxy, SSL, client certs), Secret Managers, Cookies, Response Examples, Converters (import from other API clients into Bruno; export Bruno collections back to Postman)."
+    - role: SDE 2
+      start: 2025-01
+      end: 2025-12
+      highlights:
+        - "Led gRPC support from prototype to GA: client with all four streaming modes, reflection-based service discovery, full UI layer, and CLI interoperability."
+        - Built an AST-based Postman-to-Bruno script translator using jscodeshift, converting 50+ API patterns with 100+ test cases to streamline migration for incoming teams.
+        - Designed core platform systems including a lifecycle-based hooks runtime, cookie management with a full UI, and a script error handling system.
 
 - company: Rigi
-  role: Software Developer
-  start: 2024-05
-  end: 2024-12
   location: Bangalore, India
-  highlights:
-    - Built tools to help creators monetize their communities.
   stack: [TypeScript, React, Node.js]
+  links:
+    - label: Rigi
+      href: https://rigi.club/
+  milestones:
+    - role: SDE 2
+      start: 2024-05
+      end: 2024-12
+      highlights:
+        - Built tools to help creators monetize their communities.
 
 - company: Learnapp
-  role: SDE 1 (Frontend)
-  start: 2022-07
-  end: 2023-10
   location: Noida, India
-  highlights:
-    - Improved website load times by 50% through performance optimizations.
-    - Built scalable frontend boilerplate and reusable component library; maintained product website and backend CMS.
-  stack: [React, Next.js, TypeScript]
+  stack: [Vue.js, TypeScript, JavaScript, AWS]
+  links:
+    - label: Learnapp
+      href: https://www.learnapp.com/home
+  milestones:
+    - role: SDE 1 (Frontend)
+      start: 2022-07
+      end: 2023-10
+      highlights:
+        - Improved website load times by 50% through performance optimizations.
+        - Built scalable frontend boilerplate and reusable component library; maintained product website and backend CMS.
 
 - company: XKern Technologies
-  role: React Developer
-  start: 2022-01
-  end: 2022-07
   location: Thiruvananthapuram, India
-  highlights:
-    - Built the core product website and internal tooling; led project structuring and architecture decisions.
-  stack: [React, JavaScript]
+  stack: [React, Next.js, TypeScript, JavaScript, Tailwind CSS]
+  milestones:
+    - role: React Developer
+      start: 2022-01
+      end: 2022-07
+      highlights:
+        - Built the core product website and internal tooling; led project structuring and architecture decisions.

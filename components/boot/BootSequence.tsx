@@ -38,17 +38,34 @@ export function BootSequence() {
     });
   }, []);
 
+  const replay = useCallback(() => {
+    setLineIdx(0);
+    setCharIdx(0);
+    setDismissing(false);
+    setVisible(true);
+  }, []);
+
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const forced = new URLSearchParams(window.location.search).get("boot") === "1";
     let seen = false;
     try {
       seen = localStorage.getItem(STORAGE_KEY) === "1";
     } catch {
       // ignore
     }
+    if (forced) {
+      setVisible(true);
+      return;
+    }
     if (reduced || seen) return;
     setVisible(true);
   }, []);
+
+  useEffect(() => {
+    window.addEventListener("boot:replay", replay);
+    return () => window.removeEventListener("boot:replay", replay);
+  }, [replay]);
 
   useEffect(() => {
     if (!visible || dismissing) return;
