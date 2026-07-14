@@ -188,6 +188,15 @@ export function CommandPalette({ email, github, linkedin, twitter, posts, projec
                 <span className="cmdk-item-hint">shows the intro again</span>
               </Command.Item>
               <Command.Item
+                value="pong play game 404 easter egg arcade"
+                onSelect={() => go("/pong")}
+                className="cmdk-item"
+              >
+                <span className="cmdk-item-kind">▸</span>
+                <span>play pong</span>
+                <span className="cmdk-item-hint">the 404 arcade</span>
+              </Command.Item>
+              <Command.Item
                 value="open github"
                 onSelect={() => openExternal(`https://github.com/${github}`)}
                 className="cmdk-item"

@@ -1,3 +1,4 @@
+import { Pong404 } from "@/components/pong/Pong404";
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -44,6 +45,8 @@ export default function NotFound() {
       <p className="mt-10 text-xs text-[color:var(--color-muted)]">
         press <kbd className="font-mono">⌘K</kbd> to search
       </p>
+
+      <Pong404 />
     </main>
   );
 }
