@@ -7,6 +7,20 @@ const GITHUB_CONTRIB_LOGINS = ["sanishchirayath1", "sanish-bruno"] as const;
 const PORTFOLIO_TOPIC = "portfolio";
 const GRAPHQL_ENDPOINT = "https://api.github.com/graphql";
 
+const CONTRIB_TOKEN_ENV: Record<(typeof GITHUB_CONTRIB_LOGINS)[number], string> = {
+  sanishchirayath1: "GITHUB_TOKEN_PERSONAL",
+  "sanish-bruno": "GITHUB_TOKEN",
+};
+
+function tokenForLogin(login: string): string {
+  const envName = CONTRIB_TOKEN_ENV[login as (typeof GITHUB_CONTRIB_LOGINS)[number]];
+  const token = envName ? process.env[envName] : undefined;
+  if (token) return token;
+  const fallback = process.env.GITHUB_TOKEN;
+  if (!fallback) throw new Error(`No token available for ${login} (tried ${envName ?? "n/a"})`);
+  return fallback;
+}
+
 interface RepoNode {
   name: string;
   description: string | null;
@@ -95,9 +109,13 @@ function normalize(repo: RepoNode, pinned: boolean): Project {
   };
 }
 
-export interface ContributionWeek {
-  weekStart: string;
+export interface ContributionDay {
+  date: string;
   count: number;
+}
+
+export interface ContributionWeek {
+  days: ContributionDay[];
 }
 
 interface ContributionsResponse {
@@ -141,8 +159,7 @@ async function fetchContributionCalendarFor(login: string): Promise<{
   weeks: ContributionWeek[];
   total: number;
 }> {
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) throw new Error("GITHUB_TOKEN not set");
+  const token = tokenForLogin(login);
 
   const from = new Date();
   from.setUTCDate(from.getUTCDate() - 364);
@@ -173,9 +190,8 @@ async function fetchContributionCalendarFor(login: string): Promise<{
   if (!json.data) throw new Error(`GitHub GraphQL returned no data for ${login}`);
 
   const calendar = json.data.user.contributionsCollection.contributionCalendar;
-  const weeks = calendar.weeks.map((week) => ({
-    weekStart: week.contributionDays[0]?.date ?? "",
-    count: week.contributionDays.reduce((sum, d) => sum + d.contributionCount, 0),
+  const weeks: ContributionWeek[] = calendar.weeks.map((week) => ({
+    days: week.contributionDays.map((d) => ({ date: d.date, count: d.contributionCount })),
   }));
 
   return { weeks, total: calendar.totalContributions };
@@ -188,19 +204,26 @@ export async function fetchContributionCalendar(): Promise<{
 }> {
   const results = await Promise.all(GITHUB_CONTRIB_LOGINS.map(fetchContributionCalendarFor));
 
-  const buckets = new Map<string, number>();
+  const dayCounts = new Map<string, number>();
   let total = 0;
   for (const result of results) {
     total += result.total;
     for (const week of result.weeks) {
-      if (!week.weekStart) continue;
-      buckets.set(week.weekStart, (buckets.get(week.weekStart) ?? 0) + week.count);
+      for (const day of week.days) {
+        if (!day.date) continue;
+        dayCounts.set(day.date, (dayCounts.get(day.date) ?? 0) + day.count);
+      }
     }
   }
 
-  const weeks: ContributionWeek[] = [...buckets.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([weekStart, count]) => ({ weekStart, count }));
+  const primary = results[0];
+  if (!primary) {
+    return { weeks: [], total: 0, logins: GITHUB_CONTRIB_LOGINS };
+  }
+
+  const weeks: ContributionWeek[] = primary.weeks.map((week) => ({
+    days: week.days.map((d) => ({ date: d.date, count: dayCounts.get(d.date) ?? d.count })),
+  }));
 
   return {
     weeks: weeks.slice(-52),

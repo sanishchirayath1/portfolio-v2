@@ -30,6 +30,6 @@ export const getContributionSparkline: () => Promise<ContributionResult> = unsta
       };
     }
   },
-  ["github:contributions:v2"],
+  ["github:contributions:v4"],
   { revalidate: 60 * 60 * 24, tags: [CONTRIBUTIONS_CACHE_TAG] },
 );
