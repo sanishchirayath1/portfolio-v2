@@ -1,0 +1,18 @@
+/* team */
+
+Author:   Sanish Chirayath
+Site:     https://portfolio.hstart.in
+Email:    sanishchirayath@gmail.com
+Location: Bangalore, India
+Github:   sanishchirayath1
+
+/* thanks */
+
+To everyone who publishes their work in the open.
+
+/* site */
+
+Language:  English
+Doctype:   HTML5
+Standards: Semantic HTML, keyboard-first, no images
+Software:  Next.js 15 · TypeScript · Tailwind v4 · Biome · Vercel

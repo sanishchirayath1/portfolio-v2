@@ -1,0 +1,58 @@
+---
+title: "hello, world"
+date: 2026-07-14
+tags: [meta, portfolio]
+summary: "A short note on rebuilding this site: why, how, and what surprised me."
+draft: false
+syndicate: false
+---
+
+## why
+
+Every year or so I look at my personal site and wince. The old one worked, but
+it didn't feel like something I'd built recently. It felt like a template with
+my name pasted over it. This rebuild is a small act of self-respect: a site that
+looks like me, updates itself, and gives visitors one thing that makes them
+smile.
+
+## how
+
+The stack is deliberately boring:
+
+```ts title="lib/fonts.ts"
+import { Inter, JetBrains_Mono } from "next/font/google";
+
+export const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+```
+
+- **Next.js 15** on the App Router: server components let me fetch GitHub at
+  request time without shipping JS to the client.
+- **Tailwind v4** for CSS-first design tokens.
+- **MDX** for writing, with **Shiki** doing the syntax highlighting at build.
+- **Biome** because I don't want to think about lint config.
+
+The one interesting piece is the GitHub sync: projects surface from a live API
+call cached at the edge, invalidated by a webhook. New repo → visible in ≤ 30s.
+No redeploy.
+
+## what surprised me
+
+Three things:
+
+1. **Removing images was liberating.** I thought I'd miss project screenshots.
+   I don't. Typography does more work than I gave it credit for.
+2. **`prefers-reduced-motion` is a great litmus test.** If your site still
+   works with all animations disabled, you probably didn't need most of them.
+3. **A `curl` response feels like a signature.** `curl portfolio.hstart.in`
+   returns an ANSI résumé. It costs almost nothing and it makes engineers
+   grin.
+
+## what's next
+
+Writing more. Shipping the GitHub sync. Wiring Strava into the `/now` page so
+the training log updates itself. If you spot anything broken or ugly, let me
+know, that's how it gets better.

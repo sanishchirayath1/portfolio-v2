@@ -1,0 +1,56 @@
+name: syndicate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "content/writing/**/*.mdx"
+      - ".syndication-lock.json"
+      - "scripts/syndicate.ts"
+  workflow_dispatch:
+
+concurrency:
+  group: syndicate
+  cancel-in-progress: false
+
+jobs:
+  syndicate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Publish to dev.to
+        id: syndicate
+        run: pnpm syndicate
+        env:
+          DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
+        continue-on-error: true
+
+      - name: Commit lock if changed
+        run: |
+          if [[ -n "$(git status --porcelain .syndication-lock.json)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .syndication-lock.json
+            git commit -m "chore: update syndication lock"
+            git push
+          else
+            echo "No lock changes."
+          fi
+
+      - name: Fail if syndicate errored
+        if: steps.syndicate.outcome == 'failure'
+        run: exit 1

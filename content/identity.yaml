@@ -1,0 +1,28 @@
+# Single source of truth for identity data.
+# Referenced by home page, footer, /resume, /whoami, plaintext (curl) route.
+
+name: Sanish Chirayath
+headline: Software Development Engineer
+location: Bangalore, India
+email: sanishchirayath@gmail.com
+
+socials:
+  github: sanishchirayath1
+  linkedin: sanishchirayath
+  twitter: sanishch
+  leetcode: sanishchirayath
+
+# Woven into copy and easter eggs — not displayed as a raw list.
+passions:
+  - coding
+  - finance
+  - sports
+
+# Drives /now page and status line.
+currently:
+  role: Software Developer at Bruno
+  training:
+    - swimming
+    - cycling
+  planning:
+    - calisthenics
