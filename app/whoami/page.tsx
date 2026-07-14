@@ -1,3 +1,4 @@
+import { WhoamiRepl } from "@/components/whoami/WhoamiRepl";
 import { loadIdentity } from "@/lib/content";
 import type { Metadata } from "next";
 
@@ -103,6 +104,11 @@ export default async function WhoamiPage() {
           Bangalore{"                              "}v2{"                              "}SANISH(1)
         </span>
       </pre>
+      <WhoamiRepl
+        name={identity.name}
+        role={identity.currently.role}
+        location={identity.location}
+      />
     </main>
   );
 }
