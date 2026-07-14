@@ -10,6 +10,7 @@ import { loadIdentity } from "@/lib/content";
 import { inter, jetbrainsMono } from "@/lib/fonts";
 import { listPosts } from "@/lib/posts";
 import { getCachedProjects } from "@/lib/projects-cache";
+import { Analytics } from "@vercel/analytics/next";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
@@ -111,6 +112,7 @@ export default async function RootLayout({
         <BootSequence />
         <KonamiVerbose />
         <ReadingProgress />
+        <Analytics />
       </body>
     </html>
   );

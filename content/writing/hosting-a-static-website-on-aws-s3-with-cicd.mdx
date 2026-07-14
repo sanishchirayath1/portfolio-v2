@@ -1,11 +1,389 @@
 ---
 title: "Hosting a static website on AWS S3 with CI/CD"
-date: 2024-01-01
+date: 2024-03-10
 tags: [aws, s3, cicd, infrastructure]
 summary: Ship a static site to S3 with a CI/CD pipeline that survives contact with reality.
-draft: true
+draft: false
 syndicate: false
 original_url: https://blogs.hstart.in/hosting-a-static-website-on-aws-s3-with-cicd
 ---
 
-> **Migration placeholder.** Body to be imported from `blogs.hstart.in` during M2. Kept as `draft: true` until the import lands so it doesn't ship prematurely. Original URL preserved for the M6 301 redirect.
+## Getting Started
+
+You are expected to have an AWS account to continue with this tutorial. If you don't have one, create one. It's ideal to create an AdminRole and work inside that instead of your ROOT account. This playlist from [Tiny Technical Tutorials](https://www.youtube.com/watch?v=W6jQmVi31Xk&list=PLwyXYwu8kL0wg9R_VMeXy0JiK5_c70IrV&index=5) will help you set up IAM properly.
+
+I assume you have a basic understanding of git and the web. Grab your popcorn and let's start.
+
+## Create a GitHub repo
+
+If you already have a repo with your website files, use that. Otherwise:
+
+- Run `npm create vite@latest aws-app -- --template vanilla-ts` in your terminal.
+- `cd aws-app`, `npm install`, then `npm run dev`.
+- Your app should be available at `http://localhost:5173/`.
+- Push this to GitHub.
+
+## Uploading files to S3
+
+Simple Storage Service (Amazon S3) is an object storage service. We'll use it to host our static website.
+
+- In the project folder, run `npm run build`. This generates a `dist` folder; those are the files we'll upload.
+- Navigate to S3 in the console and create a bucket. Name it after your domain (I used `webapp.hstart.in`). Default options are fine.
+- Upload the `dist` files.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710061018034/92488f7b-ebe5-4506-b639-3e48afb8b168.png)
+
+- Go to the **Properties** tab, scroll to **Static website hosting**, click Edit, enable it, save.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710061302102/79c21520-a747-4ff7-a49f-8f18b83a413b.png)
+
+  Although we've enabled static website hosting, the bucket still blocks all public access (default). We need to allow it.
+
+- Go to **Permissions**, click Edit on **Block public access (bucket settings)**, uncheck the box, save, confirm.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710061577059/0eba0007-818c-4062-8f16-16a5f482b6c1.png)
+
+- Even though public access is allowed, without a bucket policy, hitting the object URL still returns Access Denied. Add this bucket policy (replace the bucket name with yours):
+
+  ```json
+  {
+      "Version": "2012-10-17",
+      "Statement": [
+          {
+              "Sid": "PublicReadGetObject",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "s3:GetObject",
+              "Resource": "arn:aws:s3:::webapp.hstart.in/*"
+          }
+      ]
+  }
+  ```
+
+- Now you should be able to hit the object URL of each file directly. Files load, but the site isn't wired up as a website yet. That comes with CloudFront + SSL.
+
+## Setting up CloudFront
+
+CloudFront is the CDN that distributes our website globally. It reduces latency by caching content closer to the users.
+
+- **Create distribution**.
+- In the **Origin domain** input, select your S3 bucket. You'll get a warning; click **Use website endpoint**. Otherwise routing won't work correctly.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710065892528/78dd37f2-8ac2-4007-a548-3a759dfea04e.png)
+
+- Choose **Redirect HTTP to HTTPS**.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710066119253/c649c4b7-381b-41e1-ab87-8be804a9655b.png)
+
+- Disable **Web Application Firewall** for now.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710066199236/769e8bfc-9249-4f7c-acb9-b7bac1eda909.png)
+
+- Since we're using a subdomain, we need an SSL certificate. Under **Settings**, click **Request Certificate** (below the Custom SSL Certificate input).
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710066503312/55ef4ef0-1922-4bcf-9e3d-94211251be49.png)
+
+- This opens AWS Certificate Manager in a new tab. **Make sure the region is US East (N. Virginia) / us-east-1** — CloudFront requires certs in that region. Select **Request a public certificate** and click Next.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710066743448/85a92b71-db7f-4c93-a389-2c83f82d6694.png)
+
+- Add both the www and non-www versions of your subdomain. Leave everything else default, request certificate.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710066929724/7aae2626-f562-4500-9a38-d89f8dff6bcc.png)
+
+- Click on the certificate being issued, then click **Create records in Route 53** and confirm. If you don't have a hosted zone yet, create one first. Hosted zones cost around $0.60/month.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710067108353/83e567fe-e4e2-4abb-86f7-1114d5669310.png)
+
+- Come back to the CloudFront tab, click the refresh icon next to the SSL cert dropdown, and select the certificate you just created.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710067546228/016e42ba-dfce-41c7-9e99-2399be085a04.png)
+
+- Optionally add an **Alternate domain name**. Keep everything else default and click **Create distribution**.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710067650729/abc49c8b-74c4-4d30-bba7-e1320457eb5c.png)
+
+- Your new distribution should appear.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710067913253/8aa1bf08-e0ca-4c73-873f-97b7e15f6591.png)
+
+- Set up invalidations. When S3 content changes, we need to invalidate the CloudFront cache. Go to the distribution's **Invalidations** tab, click **Create invalidation**, add `/**/*` to the input, create.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710069025219/ba3e4151-700c-4016-9a3a-ecd9d7901b7f.png)
+
+- Copy the **domain name** from the distribution and open it in your browser. Your app is live on CloudFront.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710068131507/23e1d56a-7f38-4cca-a73a-46358b2a204a.png)
+
+## Setup subdomain
+
+Although we've issued a certificate for the subdomain, Route 53 doesn't yet know where to route DNS queries for `webapp.hstart.in`.
+
+- Go to Route 53, open your hosted zone, click **Create record**.
+- Enter your subdomain, select **Record type A**, toggle **Alias** on, select **Alias to CloudFront distribution**, then pick the distribution from the dropdown. **Create records**.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710068491332/8087e7ff-90b2-42af-a7e0-a2073b2c7e77.png)
+
+- Give it a few minutes. Your site is now live at your subdomain.
+
+## Re-routing www to non-www
+
+People often add `www` in front of URLs. Without setup, they'll hit a DNS error. Let's route www to non-www.
+
+- Create another bucket named `www.webapp.hstart.in`.
+- Go to its **Permissions** tab, uncheck **Block public access**, save.
+- No public policy or files needed; this bucket only redirects.
+- Go to **Properties** > **Static website hosting**, click Edit, enable, select **Redirect requests for an object**, set the target hostname (non-www version), choose **https**, save.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710071874711/fe773691-5210-48b7-9b06-f866f3337434.png)
+
+- In CloudFront, create a new distribution pointing to this bucket. Reuse the same SSL certificate; it covers both.
+- In Route 53, point `www.webapp.hstart.in` to the new distribution, same way as before.
+
+Now both `https://webapp.hstart.in/` and `https://www.webapp.hstart.in/` resolve correctly.
+
+## CI / CD
+
+Manually building and uploading files is not sustainable. Let's introduce CodeBuild and CodePipeline.
+
+Goal: on every push to `main`, CodeBuild builds the app, replaces the files in S3, and invalidates the CloudFront cache.
+
+- Go to CodeBuild, click **Create project**.
+- Pick a project name (I used `webapp`).
+- Select your source provider (GitHub). Authenticate if needed. Pick your repo.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710078320674/46fbf035-912b-4b84-9cff-6e8fe6e01851.png)
+
+- Add your main branch name to **Source version**.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710073866032/ad16aa60-8568-4b5c-b7ec-a29fabba4854.png)
+
+- When CodeBuild creates this project, it also creates an IAM role. We'll attach the necessary policies to that role.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710074227759/cf0fa7bb-3baa-4ae8-8ca4-43b94586853d.png)
+
+- Select **Use a buildspec file**. We'll add `buildspec.yml` to the root of the project.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710074347156/3100d885-2b27-4f69-8226-8b5d5a118606.png)
+
+  Here's the buildspec (replace the bucket name):
+
+  ```yaml
+  version: 0.2
+
+  phases:
+    install:
+      runtime-versions:
+        nodejs: 18
+    pre_build:
+      commands:
+        - npm install
+    build:
+      commands:
+        - npm run build
+        - aws s3 sync ./dist/ s3://webapp.hstart.in --delete
+    post_build:
+      commands:
+        - echo "Build completed successfully"
+
+  artifacts:
+    files:
+      - '**/*'
+  ```
+
+  Keep the rest at defaults and create the project.
+
+- Trigger a build from the console. It will fail because CodeBuild doesn't have S3 write permissions yet.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710075099202/2c2d9b45-8cd8-4fa4-a043-74545e27d0bb.png)
+
+- Go to IAM → Roles, find the role CodeBuild just created, click into the attached policy.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710075288933/ea99ae3c-fd85-45b4-bccf-17eba839628d.png)
+
+- CodeBuild created a base policy already but it's missing S3 write permissions on our bucket. Add `PutObject`, `DeleteObject`, and `ListBucket`.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710075715807/e9a6f175-8780-4525-9466-da978b41d344.png)
+
+  Add the bucket ARN and `/*` to the resources array (use the JSON editor):
+
+  ```
+  arn:aws:s3:::webapp.hstart.in
+  arn:aws:s3:::webapp.hstart.in/*
+  ```
+
+  Final policy will look similar to:
+
+  ```json
+  {
+      "Version": "2012-10-17",
+      "Statement": [
+          {
+              "Sid": "VisualEditor0",
+              "Effect": "Allow",
+              "Action": [
+                  "s3:ListBucket",
+                  "s3:GetBucketAcl",
+                  "logs:CreateLogGroup",
+                  "logs:PutLogEvents",
+                  "codebuild:CreateReportGroup",
+                  "codebuild:CreateReport",
+                  "s3:PutObject",
+                  "s3:GetObject",
+                  "logs:CreateLogStream",
+                  "codebuild:UpdateReport",
+                  "codebuild:BatchPutCodeCoverages",
+                  "s3:DeleteObject",
+                  "codebuild:BatchPutTestCases",
+                  "s3:GetBucketLocation",
+                  "s3:GetObjectVersion"
+              ],
+              "Resource": [
+                  "arn:aws:codebuild:ap-south-1:343391345253:report-group/webapp-*",
+                  "arn:aws:logs:ap-south-1:343391345253:log-group:/aws/codebuild/webapp",
+                  "arn:aws:logs:ap-south-1:343391345253:log-group:/aws/codebuild/webapp:*",
+                  "arn:aws:s3:::codepipeline-ap-south-1-*",
+                  "arn:aws:s3:::webapp.hstart.in",
+                  "arn:aws:s3:::webapp.hstart.in/*"
+              ]
+          }
+      ]
+  }
+  ```
+
+  Save. Retry the build.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710077133411/f861986c-9774-4ccc-8171-bd7a1c141fe9.png)
+
+Now builds run on demand. But we still need to click the button. Let's automate with CodePipeline.
+
+### Setting up CodePipeline
+
+- Go to Code Pipeline, **Create pipeline**. Choose V2. It auto-creates a role.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710077554536/d18ab01d-7638-4c91-8fbd-1e091419f4b9.png)
+
+- Connect to GitHub: name the connection, install the GitHub app, allow permissions.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710078496218/f66787b6-c014-4566-adeb-e9e0bf68ace1.png)
+
+- Set the trigger to push on your main branch.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710078602425/c75959cf-7537-4232-b7f0-25d743dde976.png)
+
+- Select **AWS CodeBuild** as the build provider and pick your project. Add environment variables if needed.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710078882762/9f8ceebd-aafa-4e56-974a-0aa31fb65fe7.png)
+
+- Skip the deploy stage (we don't need it here). Create the pipeline.
+
+  ![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710079141255/f7c5c01b-b764-4107-bd7e-88c01266c9f5.png)
+
+Now pushing to main triggers a build. Try it.
+
+## Extras
+
+The CloudFront cache doesn't invalidate on its own after a deploy, so let's force invalidation in the post-build phase:
+
+```yaml
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 18
+  pre_build:
+    commands:
+      - npm install
+  build:
+    commands:
+      - npm run build
+      - aws s3 sync ./dist/ s3://webapp.hstart.in --delete
+  post_build:
+    commands:
+      - echo "Build completed successfully"
+      - aws cloudfront create-invalidation --distribution-id ET5XFZER5THY --paths '/*'
+
+artifacts:
+  files:
+    - "**/*"
+```
+
+Grant CodeBuild's role `cloudfront:CreateInvalidation` and add the distribution's ARN to the resources array:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor0",
+            "Effect": "Allow",
+            "Action": [
+                "s3:ListBucket",
+                "s3:GetBucketAcl",
+                "logs:CreateLogGroup",
+                "logs:PutLogEvents",
+                "cloudfront:CreateInvalidation",
+                "codebuild:CreateReportGroup",
+                "codebuild:CreateReport",
+                "s3:PutObject",
+                "s3:GetObject",
+                "logs:CreateLogStream",
+                "codebuild:UpdateReport",
+                "codebuild:BatchPutCodeCoverages",
+                "s3:DeleteObject",
+                "codebuild:BatchPutTestCases",
+                "s3:GetBucketLocation",
+                "s3:GetObjectVersion"
+            ],
+            "Resource": [
+                "arn:aws:codebuild:ap-south-1:343391345253:report-group/webapp-*",
+                "arn:aws:logs:ap-south-1:343391345253:log-group:/aws/codebuild/webapp",
+                "arn:aws:logs:ap-south-1:343391345253:log-group:/aws/codebuild/webapp:*",
+                "arn:aws:cloudfront::343391345253:distribution/ET5XFZER5THY",
+                "arn:aws:s3:::webapp.hstart.in/*",
+                "arn:aws:s3:::codepipeline-ap-south-1-*",
+                "arn:aws:s3:::webapp.hstart.in"
+            ]
+        }
+    ]
+}
+```
+
+Hardcoding the bucket name and distribution ID isn't great. Move them into environment variables:
+
+```yaml
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 18
+  pre_build:
+    commands:
+      - npm install
+  build:
+    commands:
+      - npm run build
+      - aws s3 sync ./dist/ s3://$S3_BUCKET --delete
+  post_build:
+    commands:
+      - echo "Build completed successfully"
+      - aws cloudfront create-invalidation --distribution-id $DISTRIBUTION_ID --paths '/*'
+
+artifacts:
+  files:
+    - "**/*"
+```
+
+Define `S3_BUCKET` and `DISTRIBUTION_ID` in CodeBuild: **Edit** → **Environment** → **Additional configuration** → environment variables.
+
+![](https://cdn.hashnode.com/res/hashnode/image/upload/v1710089665740/1e6b90aa-9385-41f1-b226-a0200c296ea1.png)
+
+Update the project. Done.
+
+## End notes
+
+There's more to add — building and testing on pull requests to catch bugs before they land on main — but this is a working starting point.
+
+If you have questions, drop them in the comments.

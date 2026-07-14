@@ -1,11 +1,341 @@
 ---
 title: "Deploying a static website with AWS CDK: A Lazy Engineer's Guide"
-date: 2024-01-01
+date: 2024-03-14
 tags: [aws, cdk, infrastructure, devops]
 summary: Automate AWS infrastructure deployment for a static website using AWS CDK. Written for engineers who'd rather write code than click through the AWS console.
-draft: true
+draft: false
 syndicate: false
 original_url: https://blogs.hstart.in/automate-aws-infrastructure-deployment-with-aws-cdk-a-lazy-engineers-guide
 ---
 
-> **Migration placeholder.** Body to be imported from `blogs.hstart.in` during M2. Kept as `draft: true` until the import lands so it doesn't ship prematurely. Original URL preserved for the M6 301 redirect.
+In this article, we will discuss how to build the infrastructure on AWS to host a static website with the help of AWS Cloud Development Kit aka AWS-CDK. Previously, I have written a blog post on step by step process to do it with AWS console. If you haven't read it yet, check out the [previous post](/writing/hosting-a-static-website-on-aws-s3-with-cicd).
+
+We will be building the same infrastructure with code now. It would be great if you try to build it first through the console, it will help you understand aws-cdk better. As you know, people forget things, and clicking on 1000s of buttons and making the website live is a tedious process.
+
+![](https://media.geeksforgeeks.org/wp-content/uploads/20240222105715/dry-2-copy.webp)
+
+As a lazy engineer myself, I'd rather die automating a mouse click than clicking the mouse myself. Let's get into the meat of the matter.
+
+## Setup
+
+Before proceeding to code, set up your local environment:
+
+- Setting up AWS CLI: [docs.aws.amazon.com/cli](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html#getting-started-install-instructions)
+- Setting up CDK: [docs.aws.amazon.com/cdk](https://docs.aws.amazon.com/cdk/v2/guide/getting_started.html)
+
+I recommend authenticating with access tokens. Add the token via `aws configure`. Leave the region as `us-east-1` unless you want to debug against super "helpful" error messages from AWS.
+
+## Getting started
+
+You are expected to have a website project on GitHub. Any boilerplate will do; scaffold a template from [Vite](https://vitejs.dev/guide/).
+
+Let's create the `aws-cdk` stack.
+
+```bash
+mkdir cdk-app && cd cdk-app
+```
+
+Initiate the CDK stack:
+
+```bash
+cdk init app --language typescript
+```
+
+While it finishes, open your editor. Let's create an **SQS Queue** to test the setup. Go to `bin/cdk-app.ts` and uncomment:
+
+```typescript
+env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION },
+```
+
+Go to `lib/cdk-app-stack` and uncomment the code related to the SQS queue.
+
+Since we're building a CDK stack for the first time, we need to bootstrap. You'll do this once per region:
+
+```bash
+cdk bootstrap
+```
+
+Run `cdk synth` to generate a CloudFormation template from your CDK code. Then `cdk deploy` to push it to your AWS account. Check the CloudFormation section on the console; you'll see the stack being created. `cdk destroy` tears it down.
+
+Now remove the SQS-related code and let's build the stack for our static website. Add these config lines to your stack:
+
+```typescript
+const githubOwner = "your-github-username";
+const githubRepo = "your-github-repo";
+const githubBranch = "your-github-main-branch";
+const mainDomain = "example.com";
+const subDomain = "subdomain";
+```
+
+## Creating the S3 buckets
+
+From the [previous post](/writing/hosting-a-static-website-on-aws-s3-with-cicd), we need two buckets, one for the website files (pointed to by the www domain) and one for redirecting non-www requests.
+
+### The main bucket
+
+Inside the stack class:
+
+```typescript
+const websiteBucket = new cdk.aws_s3.Bucket(this, "WebsiteBucket", {
+  blockPublicAccess: {
+    blockPublicAcls: false,
+    blockPublicPolicy: false,
+    ignorePublicAcls: false,
+    restrictPublicBuckets: false,
+  },
+  autoDeleteObjects: true,
+  websiteIndexDocument: "index.html",
+  websiteErrorDocument: "index.html",
+  publicReadAccess: true,
+  removalPolicy: cdk.RemovalPolicy.DESTROY,
+});
+```
+
+A few notes:
+
+- We disable `blockPublicAccess` since our objects need to be public. Both fields have to be aligned; otherwise the deployment throws a not-at-all-helpful error.
+- `index.html` is both the index and the error document. If you try to reach `example.com/about` directly on a static site without this, you get an error. Routing `errorDocument` back to `index.html` fixes that.
+- `autoDeleteObjects: true` lets `cdk destroy` empty the bucket before deletion. Without it, destroy fails on non-empty buckets.
+- `removalPolicy: DESTROY` matches the throwaway lifecycle. Data lives in git, so we don't need to retain the bucket.
+
+Run `cdk deploy`. Confirm the resource + policy prompts.
+
+### The redirect bucket
+
+```typescript
+const websiteRedirectBucket = new cdk.aws_s3.Bucket(this, "WebsiteRedirectBucket", {
+  blockPublicAccess: {
+    blockPublicAcls: false,
+    blockPublicPolicy: false,
+    ignorePublicAcls: false,
+    restrictPublicBuckets: false,
+  },
+  websiteRedirect: {
+    hostName: `www.${subDomain}.${mainDomain}`,
+    protocol: cdk.aws_s3.RedirectProtocol.HTTPS,
+  },
+  removalPolicy: cdk.RemovalPolicy.DESTROY,
+});
+```
+
+Redirect buckets conflict with `publicReadAccess: true`, so leave that off. Run `cdk deploy`.
+
+## Creating the CloudFront distribution
+
+We can't let everyone hit S3 directly; the latency for anyone outside the bucket's region will be high. CloudFront distributes the website across the globe.
+
+At this point I assume you already have a domain, and a Route53 **public** hosted zone. If not, create one (name-server changes can take 12+ hours to propagate).
+
+Three things to do:
+
+- Look up the hosted zone
+- Create SSL certificates for the www and non-www domains
+- Attach the certificates to the CloudFront distributions
+
+### The hosted zone
+
+```typescript
+const hostedZone = cdk.aws_route53.HostedZone.fromLookup(this, "WebsiteHostedZone", {
+  domainName: mainDomain,
+});
+```
+
+### The SSL certificate
+
+Cover both www and non-www in one cert:
+
+```typescript
+const certificate = new cdk.aws_certificatemanager.Certificate(this, "WebsiteCertificate", {
+  domainName: `www.${subDomain}.${mainDomain}`,
+  subjectAlternativeNames: [`${subDomain}.${mainDomain}`],
+  validation: cdk.aws_certificatemanager.CertificateValidation.fromDnsMultiZone({
+    [`${subDomain}.${mainDomain}`]: hostedZone,
+    [`www.${subDomain}.${mainDomain}`]: hostedZone,
+  }),
+});
+```
+
+`fromDns` requires you to create DNS validation records manually. `fromDnsMultiZone` creates them for you.
+
+Run `cdk deploy`. This step takes a while; be patient.
+
+### The distributions
+
+```typescript
+const distributionForWebsite = new cdk.aws_cloudfront.Distribution(this, "WebsiteDistribution", {
+  defaultBehavior: {
+    origin: new cdk.aws_cloudfront_origins.S3Origin(websiteBucket),
+    viewerProtocolPolicy: cdk.aws_cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+  },
+  httpVersion: cdk.aws_cloudfront.HttpVersion.HTTP2,
+  domainNames: [`www.${subDomain}.${mainDomain}`],
+  certificate: certificate,
+});
+
+const distributionForRedirect = new cdk.aws_cloudfront.Distribution(this, "WebsiteRedirectDistribution", {
+  defaultBehavior: {
+    origin: new cdk.aws_cloudfront_origins.S3Origin(websiteRedirectBucket),
+    viewerProtocolPolicy: cdk.aws_cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+  },
+  httpVersion: cdk.aws_cloudfront.HttpVersion.HTTP2,
+  domainNames: [`${subDomain}.${mainDomain}`],
+  certificate: certificate,
+});
+```
+
+Both distributions redirect HTTP to HTTPS. The main one uses the www address; the redirect one uses non-www. Users end up on www no matter what they type.
+
+`cdk deploy`. Distributions can take several minutes.
+
+## Route53 records
+
+Point www and non-www to their distributions:
+
+```typescript
+new cdk.aws_route53.ARecord(this, "WebsiteARecord", {
+  zone: hostedZone,
+  target: cdk.aws_route53.RecordTarget.fromAlias(
+    new cdk.aws_route53_targets.CloudFrontTarget(distributionForWebsite)
+  ),
+  recordName: `www.${subDomain}`,
+});
+
+new cdk.aws_route53.ARecord(this, "WebsiteRedirectARecord", {
+  zone: hostedZone,
+  target: cdk.aws_route53.RecordTarget.fromAlias(
+    new cdk.aws_route53_targets.CloudFrontTarget(distributionForRedirect)
+  ),
+  recordName: `${subDomain}`,
+});
+```
+
+`cdk deploy`.
+
+## Adding CodeBuild
+
+Two steps: define the buildspec, then create the CodeBuild project.
+
+### The buildspec
+
+```typescript
+const buildSpecFile = cdk.aws_codebuild.BuildSpec.fromObject({
+  version: "0.2",
+  phases: {
+    install: {
+      "runtime-versions": { nodejs: 18 },
+    },
+    pre_build: {
+      commands: ["npm install"],
+    },
+    build: {
+      commands: [
+        "npm run build",
+        "aws s3 sync ./dist/ s3://$S3_BUCKET --delete",
+      ],
+    },
+    post_build: {
+      commands: [
+        "echo 'Build completed successfully'",
+        "aws cloudfront create-invalidation --distribution-id $DISTRIBUTION_ID --paths '/*'",
+      ],
+    },
+  },
+  artifacts: {
+    files: ["**/*"],
+  },
+});
+```
+
+### The CodeBuild project
+
+```typescript
+const codeBuild = new cdk.aws_codebuild.Project(this, "codeBuildProject", {
+  buildSpec: buildSpecFile,
+  environment: {
+    buildImage: cdk.aws_codebuild.LinuxBuildImage.STANDARD_7_0,
+    environmentVariables: {
+      S3_BUCKET: { value: websiteBucket.bucketName },
+      DISTRIBUTION_ID: { value: distributionForWebsite.distributionId },
+    },
+  },
+  source: cdk.aws_codebuild.Source.gitHub({
+    owner: githubOwner,
+    repo: githubRepo,
+    webhook: true,
+    webhookFilters: [
+      cdk.aws_codebuild.FilterGroup.inEventOf(
+        cdk.aws_codebuild.EventAction.PUSH
+      ).andBranchIs(githubBranch),
+    ],
+  }),
+});
+```
+
+Because our references to the bucket and distribution are already CDK constructs, we pass them straight into environment variables.
+
+`cdk deploy`. If you trigger a build from the console now, it'll fail; permissions are missing. Add them:
+
+```typescript
+websiteBucket.grantReadWrite(codeBuild);
+websiteBucket.grantDelete(codeBuild);
+distributionForWebsite.grantCreateInvalidation(codeBuild);
+```
+
+CodeBuild needs `PutObject` + `DeleteObject` on the bucket (we sync with `--delete`), and `CreateInvalidation` on the distribution (post-build).
+
+`cdk deploy` again.
+
+## Setting up CodePipeline
+
+Two stages: source and build.
+
+```typescript
+const sourceOutput = new cdk.aws_codepipeline.Artifact();
+const buildOutput = new cdk.aws_codepipeline.Artifact();
+
+const pipeline = new cdk.aws_codepipeline.Pipeline(this, "WebsitePipeline", {
+  pipelineType: cdk.aws_codepipeline.PipelineType.V2,
+  stages: [
+    {
+      stageName: "Source",
+      actions: [
+        new cdk.aws_codepipeline_actions.GitHubSourceAction({
+          actionName: "GitHub_Source",
+          owner: githubOwner,
+          repo: githubRepo,
+          branch: githubBranch,
+          oauthToken: cdk.SecretValue.secretsManager("my-secrets", {
+            jsonField: "github_token",
+          }),
+          output: sourceOutput,
+        }),
+      ],
+    },
+    {
+      stageName: "Build",
+      actions: [
+        new cdk.aws_codepipeline_actions.CodeBuildAction({
+          actionName: "CodeBuild",
+          project: codeBuild,
+          input: sourceOutput,
+          outputs: [buildOutput],
+        }),
+      ],
+    },
+  ],
+});
+```
+
+Store the GitHub token in AWS Secrets Manager under a key like `github_token`. Never plaintext it; anyone with CloudFormation read access can see it. If you're just testing, `cdk.SecretValue.unsafePlainText(...)` works temporarily.
+
+Secrets Manager costs about $0.40 per secret per month plus $0.05 per 10k requests.
+
+`cdk deploy` one last time.
+
+## Wrapping up
+
+Once you set the config variables, hosting a new website is minutes of work instead of hours of clicking. `cdk destroy` tears the whole thing down.
+
+We're still deploying CDK manually. Next step is a GitHub Action that runs `cdk deploy` on merge to main, so team reviews happen in PRs. That's for another post.
+
+Full source is [on GitHub](https://github.com/sanishchirayath1/cdk-app).
